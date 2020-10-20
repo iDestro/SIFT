@@ -1,4 +1,5 @@
 import numpy as np
+import cv2
 
 
 class SIFT:
@@ -46,3 +47,31 @@ class SIFT:
         laplacian_img = np.int8(laplacian_img + 0.5)
         laplacian_img = laplacian_img[1:m - 1, 1:n - 1]
         return laplacian_img
+
+    @staticmethod
+    def gaussian_blur(img, sigma):
+
+        m, n = img.shape
+        d = int(sigma * 3)
+        # gaussian_filter = np.zeros([2 * d + 1, 2 * d + 1], dtype=np.float)
+        # padded_img = np.zeros([m + 2 * d, n + 2 * d], dtype=np.float)
+        # padded_img[d:m + d, d:n + d] = img
+        # filtered_img = np.zeros_like(padded_img, dtype=np.float)
+        #
+        # for i in range(2 * d + 1):
+        #     for j in range(2 * d + 1):
+        #         gaussian_filter[i, j] = 1.0 / (2 * np.pi * sigma ** 2) * np.exp(
+        #             -((i - d) ** 2 + (j - d) ** 2) / (2 * sigma ** 2))
+        #
+        # for i in range(d, m + d):
+        #     for j in range(d, n + d):
+        #         filtered_img[i, j] = np.sum(padded_img[i - d:i + d + 1, j - d:j + d + 1] * gaussian_filter)
+        #
+        # filtered_img = filtered_img[d:m + d, d:n + d]
+        # max_val = np.max(filtered_img)
+        # min_val = np.min(filtered_img)
+        # filtered_img = (filtered_img - min_val) / (max_val - min_val) * 255
+        # filtered_img = np.uint8(filtered_img + 0.5)
+
+        filtered_img = cv2.GaussianBlur(img, (2*d+1, 2*d+1), sigma)
+        return filtered_img
