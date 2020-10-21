@@ -52,21 +52,34 @@ INT_MAX = 2147483647
 
 
 class SIFT:
-    def __int__(self, n_octaves, n_octave_layers=3, contrast_threshold=0.04, edge_threshold=10, sigma=1.6):
-        self.n_octaves = n_octaves
+    def __init__(self, n_octave_layers=3, contrast_threshold=0.04, edge_threshold=10, sigma=1.6):
         self.n_octave_layers = n_octave_layers
         self.contrast_threshold = contrast_threshold
         self.edge_threshold = edge_threshold
         self.sigma = sigma
         self.key_points = []
         self.descriptors = []
+        self.img = None
+        self.n_octaves = None
+        self.gaussian_pyramid = None
+        self.dog_pyramid = None
+
+    def create_initial_image(self, img):
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        h, w = img.shape
+        self.img = img
+        self.n_octaves = int(np.log(min(h, w)))-3
         self.gaussian_pyramid = {i: [] for i in range(self.n_octaves)}
         self.dog_pyramid = {i: [] for i in range(self.n_octaves)}
+        # self.build_gaussian_pyramid(img)
+        # self.build_dog_pyramid()
+        # self.find_scale_space_extrema()
+        # self.calc_descriptors()
 
-    def build_gaussian_pyramid(self, n_octaves, img):
-        for octave in range(n_octaves):
+    def build_gaussian_pyramid(self):
+        for octave in range(self.n_octaves):
             if octave == 0:
-                cur_octave_init_img = img
+                cur_octave_init_img = self.img
             else:
                 cur_octave_init_img = self.gaussian_pyramid[octave - 1][2]
                 w, h = cur_octave_init_img.shape
@@ -74,6 +87,8 @@ class SIFT:
             for i in range(self.n_octave_layers + 3):
                 cur_sigma = np.power(self.sigma, octave + i / (self.n_octave_layers + 3))
                 size = (int(6 * cur_sigma + 1), int(6 * cur_sigma + 1))
+                if int(6 * cur_sigma + 1) % 2 == 0:
+                    size = (int(6 * cur_sigma + 2), int(6 * cur_sigma + 2))
                 temp_img = cv2.GaussianBlur(cur_octave_init_img, ksize=size, sigmaX=cur_sigma, sigmaY=cur_sigma)
                 self.gaussian_pyramid[octave].append(temp_img)
 
@@ -155,17 +170,17 @@ class SIFT:
                             if key_point is None:
                                 continue
                             scl_octv = key_point.size * 0.5 / (1 << octave)
-                            omax, hist = self.calc_orientation_hist(octave, layer, i, j, 3 * scl_octv, 1.5 * scl_octv,
-                                                                    n)
+                            omax, hist = self.calc_orientation_hist(octave, layer, i, j, 3 * scl_octv, 1.5 * scl_octv, n)
                             mag_thr = omax * 0.8
                             for i in range(n):
-                                l = j - 1 if i > 0 else n - 1
-                                r = j + 1 if i < n - 1 else 0
+                                print(i)
+                                l = i - 1 if i > 0 else n - 1
+                                r = i + 1 if i < n - 1 else 0
                                 if hist[l] < hist[i] < hist[r] and hist[i] > mag_thr:
                                     bin = i + 0.5 * (hist[l] - hist[r]) / (hist[l] - 2 * hist[j] + hist[r])
                                     bin = n + bin if bin < 0 else (bin - n if bin >= n else bin)
                                     key_point.angle = 360 - ((360 / n) * bin)
-                                    if np.abs(key_point.angle - 360 < 0.0001):
+                                    if np.abs(key_point.angle - 360) < FLT_EPSILON:
                                         key_point.angle = 0
                                     self.key_points.append(key_point)
 
@@ -272,33 +287,33 @@ class SIFT:
     def calc_orientation_hist(self, octave, layer, x, y, radius, sigma, n):
 
         img = self.dog_pyramid[octave][layer]
-        cols, rows = img.shape
-        length = (radius * 2 + 1) * (radius * 2 + 1)
+        rows, cols = img.shape
+        length = int((radius * 2 + 1) * (radius * 2 + 1))
         expf_scale = -1.0 / (2 * sigma * sigma)
         X = []
         Y = []
         W = []
         temp_hist = [0] * (length + 2)
 
-        for i in range(-radius, radius + 1):
-            if y <= 0 or y >= rows - 1:
+        for i in range(-int(radius), int(radius) + 1):
+            if (y+i) <= 0 or (y+i) >= rows - 1:
                 continue
-            for j in range(-radius, radius + 1):
-                if x <= 0 or x >= cols - 1:
+            for j in range(-int(radius), int(radius) + 1):
+                if (x+j) <= 0 or (x+j) >= cols - 1:
                     continue
-                dx = img[y][x + 1] - img[y][x - 1]
-                dy = img[y - 1][x] - img[y + 1][x]
+                dx = img[y+i][x+j + 1] - img[y+i][x+j - 1]
+                dy = img[y+i - 1][x+j] - img[y+i + 1][x+j]
                 X.append(dx)
                 Y.append(dy)
                 W.append((i * i + j * j) * expf_scale)
         length = len(X)
-        X = np.array(X).reshape(1, length)
-        Y = np.array(Y).reshape(length, 1)
+        X = np.array(X)
+        Y = np.array(Y)
         W = np.array(W)
 
         W = np.exp(W)
-        Ori = np.arctan2(Y, X)
         Mag = np.sqrt(Y ** 2 + X ** 2)
+        Ori = np.arctan2(Y, X)
 
         for i in range(length):
             bin = int(np.round((n / 360) * Ori[i]))
@@ -306,13 +321,13 @@ class SIFT:
                 bin -= n
             if bin < 0:
                 bin += n
-            temp_hist[bin] += W[i] * Mag[i, :]
+            temp_hist[bin] += W[i] * Mag[i]
 
         temp_hist[-1] = temp_hist[n - 1]
         temp_hist[-2] = temp_hist[n - 2]
         temp_hist[n] = temp_hist[0]
         temp_hist[n + 1] = temp_hist[1]
-        hist = np.zeros(length)
+        hist = np.zeros(n)
         for i in range(n):
             hist[i] = (temp_hist[i - 2] + temp_hist[i + 2]) * (1 / 16) + (temp_hist[i - 1] + temp_hist[i + 1]) * (
                     4 / 16) + temp_hist[i] * (6 / 16)
@@ -451,3 +466,5 @@ class SIFT:
 
         for i in range(length):
             dst[i] = dst[i] * nrm2
+
+        self.descriptors.append(dst)
