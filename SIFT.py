@@ -2,7 +2,6 @@ import numpy as np
 from KeyPoint import KeyPoint
 import cv2
 
-
 FLT_EPSILON = 1.192092896e-07
 SIFT_INTVLS = 3
 # 最初的高斯模糊的尺度默认值，即假设的第0组（某些地方叫做-1组）的尺度
@@ -53,7 +52,7 @@ INT_MAX = 2147483647
 
 
 class SIFT:
-    def __int__(self, n_octaves, n_octave_layers, contrast_threshold, edge_threshold, sigma):
+    def __int__(self, n_octaves, n_octave_layers=3, contrast_threshold=0.04, edge_threshold=10, sigma=1.6):
         self.n_octaves = n_octaves
         self.n_octave_layers = n_octave_layers
         self.contrast_threshold = contrast_threshold
@@ -94,65 +93,63 @@ class SIFT:
                         cur_pixel = images[layer][i][j]
                         if (np.abs(cur_pixel) > threshold and
                                 ((cur_pixel > 0 and
-                                  cur_pixel > images[layer][i][j - 1] and cur_pixel > images[layer][i][j + 1] and
-                                  cur_pixel > images[layer][i - 1][j] and cur_pixel > images[layer][i + 1][j] and
-                                  cur_pixel > images[layer][i - 1][j - 1] and cur_pixel > images[layer][i + 1][
-                                      j + 1] and
-                                  cur_pixel > images[layer][i - 1][j + 1] and cur_pixel > images[layer][i + 1][
-                                      j - 1] and
-
+                                  cur_pixel > images[layer][i][j - 1] and
+                                  cur_pixel > images[layer][i][j + 1] and
+                                  cur_pixel > images[layer][i - 1][j] and
+                                  cur_pixel > images[layer][i + 1][j] and
+                                  cur_pixel > images[layer][i - 1][j - 1] and
+                                  cur_pixel > images[layer][i + 1][j + 1] and
+                                  cur_pixel > images[layer][i - 1][j + 1] and
+                                  cur_pixel > images[layer][i + 1][j - 1] and
                                   cur_pixel > images[layer - 1][i][j] and
-                                  cur_pixel > images[layer - 1][i][j - 1] and cur_pixel > images[layer - 1][i][
-                                      j + 1] and
-                                  cur_pixel > images[layer - 1][i - 1][j] and cur_pixel > images[layer - 1][i + 1][
-                                      j] and
-                                  cur_pixel > images[layer - 1][i - 1][j - 1] and cur_pixel > images[layer - 1][i + 1][
-                                      j + 1] and
-                                  cur_pixel > images[layer - 1][i - 1][j + 1] and cur_pixel > images[layer - 1][i + 1][
-                                      j - 1] and
-
+                                  cur_pixel > images[layer - 1][i][j - 1] and
+                                  cur_pixel > images[layer - 1][i][j + 1] and
+                                  cur_pixel > images[layer - 1][i - 1][j] and
+                                  cur_pixel > images[layer - 1][i + 1][j] and
+                                  cur_pixel > images[layer - 1][i - 1][j - 1] and
+                                  cur_pixel > images[layer - 1][i + 1][j + 1] and
+                                  cur_pixel > images[layer - 1][i - 1][j + 1] and
+                                  cur_pixel > images[layer - 1][i + 1][j - 1] and
                                   cur_pixel > images[layer + 1][i][j] and
-                                  cur_pixel > images[layer + 1][i][j - 1] and cur_pixel > images[layer + 1][i][
-                                      j + 1] and
-                                  cur_pixel > images[layer + 1][i - 1][j] and cur_pixel > images[layer + 1][i + 1][
-                                      j] and
-                                  cur_pixel > images[layer + 1][i - 1][j - 1] and cur_pixel > images[layer + 1][i + 1][
-                                      j + 1] and
-                                  cur_pixel > images[layer + 1][i - 1][j + 1] and cur_pixel > images[layer + 1][i + 1][
-                                      j - 1]
-                                 ) or (
-                                         cur_pixel < 0 and
-                                         cur_pixel < images[layer][i][j - 1] and cur_pixel < images[layer][i][j + 1] and
-                                         cur_pixel < images[layer][i - 1][j] and cur_pixel < images[layer][i + 1][j] and
-                                         cur_pixel < images[layer][i - 1][j - 1] and cur_pixel < images[layer][i + 1][
-                                             j + 1] and
-                                         cur_pixel < images[layer][i - 1][j + 1] and cur_pixel < images[layer][i + 1][
-                                             j - 1] and
-
-                                         cur_pixel < images[layer - 1][i][j] and
-                                         cur_pixel < images[layer - 1][i][j - 1] and cur_pixel < images[layer - 1][i][
-                                             j + 1] and
-                                         cur_pixel < images[layer - 1][i - 1][j] and cur_pixel <
-                                         images[layer - 1][i + 1][j] and
-                                         cur_pixel < images[layer - 1][i - 1][j - 1] and cur_pixel <
-                                         images[layer - 1][i + 1][
-                                             j + 1] and
-                                         cur_pixel < images[layer - 1][i - 1][j + 1] and cur_pixel <
-                                         images[layer - 1][i + 1][
-                                             j - 1] and
-
-                                         cur_pixel < images[layer + 1][i][j] and
-                                         cur_pixel < images[layer + 1][i][j - 1] and cur_pixel < images[layer + 1][i][
-                                             j + 1] and
-                                         cur_pixel < images[layer + 1][i - 1][j] and cur_pixel <
-                                         images[layer + 1][i + 1][j] and
-                                         cur_pixel < images[layer + 1][i - 1][j - 1] and cur_pixel <
-                                         images[layer + 1][i + 1][
-                                             j + 1] and
-                                         cur_pixel < images[layer + 1][i - 1][j + 1] and cur_pixel <
-                                         images[layer + 1][i + 1][
-                                             j - 1]
-                                 ))):
+                                  cur_pixel > images[layer + 1][i][j - 1] and
+                                  cur_pixel > images[layer + 1][i][j + 1] and
+                                  cur_pixel > images[layer + 1][i - 1][j] and
+                                  cur_pixel > images[layer + 1][i + 1][j] and
+                                  cur_pixel > images[layer + 1][i - 1][j - 1] and
+                                  cur_pixel > images[layer + 1][i + 1][j + 1] and
+                                  cur_pixel > images[layer + 1][i - 1][j + 1] and
+                                  cur_pixel > images[layer + 1][i + 1][j - 1])
+                                 or
+                                 (cur_pixel < 0 and
+                                  cur_pixel < images[layer][i][j - 1] and
+                                  cur_pixel < images[layer][i][j + 1] and
+                                  cur_pixel < images[layer][i - 1][j] and
+                                  cur_pixel < images[layer][i + 1][j] and
+                                  cur_pixel < images[layer][i - 1][j - 1] and
+                                  cur_pixel < images[layer][i + 1][j + 1] and
+                                  cur_pixel < images[layer][i - 1][j + 1] and
+                                  cur_pixel < images[layer][i + 1][j - 1] and
+                                  cur_pixel < images[layer - 1][i][j] and
+                                  cur_pixel < images[layer - 1][i][j - 1] and
+                                  cur_pixel < images[layer - 1][i][j + 1] and
+                                  cur_pixel < images[layer - 1][i - 1][j] and
+                                  cur_pixel < images[layer - 1][i + 1][j] and
+                                  cur_pixel < images[layer - 1][i - 1][j - 1] and
+                                  cur_pixel < images[layer - 1][i + 1][j + 1] and
+                                  cur_pixel < images[layer - 1][i - 1][j + 1] and
+                                  cur_pixel < images[layer - 1][i + 1][j - 1] and
+                                  cur_pixel < images[layer + 1][i][j] and
+                                  cur_pixel < images[layer + 1][i][j - 1] and
+                                  cur_pixel < images[layer + 1][i][j + 1] and
+                                  cur_pixel < images[layer + 1][i - 1][j] and
+                                  cur_pixel < images[layer + 1][i + 1][j] and
+                                  cur_pixel < images[layer + 1][i - 1][j - 1] and
+                                  cur_pixel < images[layer + 1][i + 1][j + 1] and
+                                  cur_pixel < images[layer + 1][i - 1][j + 1] and
+                                  cur_pixel < images[layer + 1][i + 1][j - 1]
+                                 )
+                                )
+                        ):
 
                             key_point = self.adjust_adjust_local_extrema(octave, layer, i, j)
                             if key_point is None:
@@ -218,7 +215,7 @@ class SIFT:
             if np.abs(xi) < 0.5 and np.abs(xr) < 0.5 and np.abs(xc) < 0.5:
                 break
 
-            if np.abs(xi) > INT_MAX/3 or np.abs(xr) > INT_MAX/3 or np.abs(xc) > INT_MAX/3:
+            if np.abs(xi) > INT_MAX / 3 or np.abs(xr) > INT_MAX / 3 or np.abs(xc) > INT_MAX / 3:
                 return None
 
             j += np.round(xc)
@@ -263,8 +260,8 @@ class SIFT:
                 return None
 
         key_point = KeyPoint()
-        key_point.x = (j+xc) * 2 ** octave
-        key_point.y = (i+xr) * 2 ** octave
+        key_point.x = (j + xc) * 2 ** octave
+        key_point.y = (i + xr) * 2 ** octave
         key_point.octave = octave
         key_point.layer = layer
         key_point.size = self.sigma * np.power(2, (layer + xi) / self.n_octave_layers) * (1 << octave) * 2
@@ -430,7 +427,7 @@ class SIFT:
             hist[idx + (d + 3) * (n + 2)] += v_rco110
             hist[idx + (d + 3) * (n + 2) + 1] += v_rco111
 
-        dst = np.zeros(d*d*n)
+        dst = np.zeros(d * d * n)
         for i in range(d):
             for j in range(d):
                 idx = ((i + 1) * (d + 2) + (j + 1)) * (n + 2)
