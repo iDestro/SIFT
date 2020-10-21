@@ -1,5 +1,55 @@
 import numpy as np
+from KeyPoint import KeyPoint
 import cv2
+
+
+FLT_EPSILON = 1.192092896e-07
+SIFT_INTVLS = 3
+# 最初的高斯模糊的尺度默认值，即假设的第0组（某些地方叫做-1组）的尺度
+SIFT_SIGMA = 1.6
+# 关键点对比 |D(x)|的默认值，公式14的阈值
+SIFT_CONTR_THR = 0.04
+# 关键点的主曲率比的默认阈值
+SIFT_CURV_THR = 10.
+# 是否在构建高斯金字塔之前扩展图像的宽和高位原来的两倍（即是否建立-1组）
+SIFT_IMG_DBL = True
+# 描述子直方图数组的默认宽度，即描述子建立中的4*4的周边区域
+SIFT_DESCR_WIDTH = 4
+# 每个描述子数组中的默认柱的个数（ 4*4*8=128）
+SIFT_DESCR_HIST_BINS = 8
+# 假设输入图像的高斯模糊的尺度
+SIFT_INIT_SIGMA = 0.5
+
+# width of border in which to ignore keypoints
+SIFT_IMG_BORDER = 5
+# 公式12的为了寻找关键点插值中心的最大迭代次数
+SIFT_MAX_INTERP_STEPS = 5
+
+# 方向梯度直方图中的柱的个数
+SIFT_ORI_HIST_BINS = 36
+
+# determines gaussian sigma for orientation assignment
+SIFT_ORI_SIG_FCTR = 1.5
+
+# determines the radius of the region used in orientation assignment
+SIFT_ORI_RADIUS = 3 * SIFT_ORI_SIG_FCTR
+
+# orientation magnitude relative to max that results in new feature
+SIFT_ORI_PEAK_RATIO = 0.8
+
+# determines the size of a single descriptor orientation histogram
+SIFT_DESCR_SCL_FCTR = 3.
+
+# threshold on magnitude of elements of descriptor vector
+SIFT_DESCR_MAG_THR = 0.2
+
+# factor used to convert floating-point descriptor to unsigned char
+SIFT_INT_DESCR_FCTR = 512.
+
+# intermediate type used for DoG pyramids
+SIFT_FIXPT_SCALE = 1
+
+INT_MAX = 2147483647
 
 
 class SIFT:
@@ -35,100 +85,114 @@ class SIFT:
 
     def find_scale_space_extrema(self):
         threshold = int(np.round(0.5 * self.contrast_threshold / self.n_octave_layers * 255))
-        n = 36
-        hist = None
+        n = SIFT_ORI_HIST_BINS
         for octave, images in self.dog_pyramid.items():
             for layer in range(1, len(images) - 1):
                 h, w = images[layer].shape
                 for i in range(1, h - 1):
                     for j in range(1, w - 1):
                         cur_pixel = images[layer][i][j]
-                        if (
-                                cur_pixel > 0 and
-                                cur_pixel > images[layer][i][j - 1] and cur_pixel > images[layer][i][j + 1] and
-                                cur_pixel > images[layer][i - 1][j] and cur_pixel > images[layer][i + 1][j] and
-                                cur_pixel > images[layer][i - 1][j - 1] and cur_pixel > images[layer][i + 1][j + 1] and
-                                cur_pixel > images[layer][i - 1][j + 1] and cur_pixel > images[layer][i + 1][j - 1] and
+                        if (np.abs(cur_pixel) > threshold and
+                                ((cur_pixel > 0 and
+                                  cur_pixel > images[layer][i][j - 1] and cur_pixel > images[layer][i][j + 1] and
+                                  cur_pixel > images[layer][i - 1][j] and cur_pixel > images[layer][i + 1][j] and
+                                  cur_pixel > images[layer][i - 1][j - 1] and cur_pixel > images[layer][i + 1][
+                                      j + 1] and
+                                  cur_pixel > images[layer][i - 1][j + 1] and cur_pixel > images[layer][i + 1][
+                                      j - 1] and
 
-                                cur_pixel > images[layer - 1][i][j] and
-                                cur_pixel > images[layer - 1][i][j - 1] and cur_pixel > images[layer - 1][i][j + 1] and
-                                cur_pixel > images[layer - 1][i - 1][j] and cur_pixel > images[layer - 1][i + 1][j] and
-                                cur_pixel > images[layer - 1][i - 1][j - 1] and cur_pixel > images[layer - 1][i + 1][
-                                    j + 1] and
-                                cur_pixel > images[layer - 1][i - 1][j + 1] and cur_pixel > images[layer - 1][i + 1][
-                                    j - 1] and
+                                  cur_pixel > images[layer - 1][i][j] and
+                                  cur_pixel > images[layer - 1][i][j - 1] and cur_pixel > images[layer - 1][i][
+                                      j + 1] and
+                                  cur_pixel > images[layer - 1][i - 1][j] and cur_pixel > images[layer - 1][i + 1][
+                                      j] and
+                                  cur_pixel > images[layer - 1][i - 1][j - 1] and cur_pixel > images[layer - 1][i + 1][
+                                      j + 1] and
+                                  cur_pixel > images[layer - 1][i - 1][j + 1] and cur_pixel > images[layer - 1][i + 1][
+                                      j - 1] and
 
-                                cur_pixel > images[layer + 1][i][j] and
-                                cur_pixel > images[layer + 1][i][j - 1] and cur_pixel > images[layer + 1][i][j + 1] and
-                                cur_pixel > images[layer + 1][i - 1][j] and cur_pixel > images[layer + 1][i + 1][j] and
-                                cur_pixel > images[layer + 1][i - 1][j - 1] and cur_pixel > images[layer + 1][i + 1][
-                                    j + 1] and
-                                cur_pixel > images[layer + 1][i - 1][j + 1] and cur_pixel > images[layer + 1][i + 1][
-                                    j - 1]
-                        ) or (
-                                cur_pixel < 0 and
-                                cur_pixel < images[layer][i][j - 1] and cur_pixel < images[layer][i][j + 1] and
-                                cur_pixel < images[layer][i - 1][j] and cur_pixel < images[layer][i + 1][j] and
-                                cur_pixel < images[layer][i - 1][j - 1] and cur_pixel < images[layer][i + 1][j + 1] and
-                                cur_pixel < images[layer][i - 1][j + 1] and cur_pixel < images[layer][i + 1][j - 1] and
+                                  cur_pixel > images[layer + 1][i][j] and
+                                  cur_pixel > images[layer + 1][i][j - 1] and cur_pixel > images[layer + 1][i][
+                                      j + 1] and
+                                  cur_pixel > images[layer + 1][i - 1][j] and cur_pixel > images[layer + 1][i + 1][
+                                      j] and
+                                  cur_pixel > images[layer + 1][i - 1][j - 1] and cur_pixel > images[layer + 1][i + 1][
+                                      j + 1] and
+                                  cur_pixel > images[layer + 1][i - 1][j + 1] and cur_pixel > images[layer + 1][i + 1][
+                                      j - 1]
+                                 ) or (
+                                         cur_pixel < 0 and
+                                         cur_pixel < images[layer][i][j - 1] and cur_pixel < images[layer][i][j + 1] and
+                                         cur_pixel < images[layer][i - 1][j] and cur_pixel < images[layer][i + 1][j] and
+                                         cur_pixel < images[layer][i - 1][j - 1] and cur_pixel < images[layer][i + 1][
+                                             j + 1] and
+                                         cur_pixel < images[layer][i - 1][j + 1] and cur_pixel < images[layer][i + 1][
+                                             j - 1] and
 
-                                cur_pixel < images[layer - 1][i][j] and
-                                cur_pixel < images[layer - 1][i][j - 1] and cur_pixel < images[layer - 1][i][j + 1] and
-                                cur_pixel < images[layer - 1][i - 1][j] and cur_pixel < images[layer - 1][i + 1][j] and
-                                cur_pixel < images[layer - 1][i - 1][j - 1] and cur_pixel < images[layer - 1][i + 1][
-                                    j + 1] and
-                                cur_pixel < images[layer - 1][i - 1][j + 1] and cur_pixel < images[layer - 1][i + 1][
-                                    j - 1] and
+                                         cur_pixel < images[layer - 1][i][j] and
+                                         cur_pixel < images[layer - 1][i][j - 1] and cur_pixel < images[layer - 1][i][
+                                             j + 1] and
+                                         cur_pixel < images[layer - 1][i - 1][j] and cur_pixel <
+                                         images[layer - 1][i + 1][j] and
+                                         cur_pixel < images[layer - 1][i - 1][j - 1] and cur_pixel <
+                                         images[layer - 1][i + 1][
+                                             j + 1] and
+                                         cur_pixel < images[layer - 1][i - 1][j + 1] and cur_pixel <
+                                         images[layer - 1][i + 1][
+                                             j - 1] and
 
-                                cur_pixel < images[layer + 1][i][j] and
-                                cur_pixel < images[layer + 1][i][j - 1] and cur_pixel < images[layer + 1][i][j + 1] and
-                                cur_pixel < images[layer + 1][i - 1][j] and cur_pixel < images[layer + 1][i + 1][j] and
-                                cur_pixel < images[layer + 1][i - 1][j - 1] and cur_pixel < images[layer + 1][i + 1][
-                                    j + 1] and
-                                cur_pixel < images[layer + 1][i - 1][j + 1] and cur_pixel < images[layer + 1][i + 1][
-                                    j - 1]
-                        ):
+                                         cur_pixel < images[layer + 1][i][j] and
+                                         cur_pixel < images[layer + 1][i][j - 1] and cur_pixel < images[layer + 1][i][
+                                             j + 1] and
+                                         cur_pixel < images[layer + 1][i - 1][j] and cur_pixel <
+                                         images[layer + 1][i + 1][j] and
+                                         cur_pixel < images[layer + 1][i - 1][j - 1] and cur_pixel <
+                                         images[layer + 1][i + 1][
+                                             j + 1] and
+                                         cur_pixel < images[layer + 1][i - 1][j + 1] and cur_pixel <
+                                         images[layer + 1][i + 1][
+                                             j - 1]
+                                 ))):
 
                             key_point = self.adjust_adjust_local_extrema(octave, layer, i, j)
                             if key_point is None:
                                 continue
-                            scl_octv = key_point[3] * 0.5 / (1 << octave)
-                            omax, hist = self.calc_orientation_hist(octave, layer, i, j, 3 * scl_octv, 1.5 * scl_octv, n)
-                            mag_thr = omax*0.8
+                            scl_octv = key_point.size * 0.5 / (1 << octave)
+                            omax, hist = self.calc_orientation_hist(octave, layer, i, j, 3 * scl_octv, 1.5 * scl_octv,
+                                                                    n)
+                            mag_thr = omax * 0.8
                             for i in range(n):
-                                l = j-1 if i > 0 else n-1
-                                r = j+1 if i < n-1 else 0
+                                l = j - 1 if i > 0 else n - 1
+                                r = j + 1 if i < n - 1 else 0
                                 if hist[l] < hist[i] < hist[r] and hist[i] > mag_thr:
-                                    bin = i + 0.5*(hist[l]-hist[r])/(hist[l]-2*hist[j]+hist[r])
-                                    bin = n+bin if bin < 0 else (bin-n if bin >= n else bin)
-                                    key_point.append(360 - ((360/n) * bin))
-                                    if np.abs(key_point[-1]-360 < 0.0001):
-                                        key_point[-1] = 0
+                                    bin = i + 0.5 * (hist[l] - hist[r]) / (hist[l] - 2 * hist[j] + hist[r])
+                                    bin = n + bin if bin < 0 else (bin - n if bin >= n else bin)
+                                    key_point.angle = 360 - ((360 / n) * bin)
+                                    if np.abs(key_point.angle - 360 < 0.0001):
+                                        key_point.angle = 0
                                     self.key_points.append(key_point)
 
     def adjust_adjust_local_extrema(self, octave, layer, i, j):
 
-        img_scale = 1.0 / 255
+        img_scale = 1.0 / (255 * SIFT_FIXPT_SCALE)
         deriv_scale = img_scale * 0.5
         second_deriv_scale = img_scale
         cross_deriv_scale = img_scale * 0.25
 
-        INT_MAX = 2147483647
-        SIFT_MAX_INTERP_STEPS = 5
-        SIFT_IMG_BORDER = 5
-
-        up_layer = self.dog_pyramid[octave][layer + 1].astype(dtype=float)
-        cur_layer = self.dog_pyramid[octave][layer].astype(dtype=float)
-        down_layer = self.dog_pyramid[octave][layer - 1].astype(dtype=float)
-
-        h, w = cur_layer.shape
+        h, w = self.dog_pyramid[octave][layer].shape
         xc, xr, xi, contr = 0, 0, 0, 0
         for epoch in range(SIFT_MAX_INTERP_STEPS):
+
+            up_layer = self.dog_pyramid[octave][layer + 1].astype(dtype=float)
+            cur_layer = self.dog_pyramid[octave][layer].astype(dtype=float)
+            down_layer = self.dog_pyramid[octave][layer - 1].astype(dtype=float)
+
             dD = np.array([
                 (cur_layer[i][j + 1] - cur_layer[i][j - 1]) * deriv_scale,
                 (cur_layer[i + 1][j] - cur_layer[i - 1][j]) * deriv_scale,
                 (up_layer[i][j] - down_layer[i][j]) * deriv_scale
             ])
+
             v2 = cur_layer[i][j] * 2
             dxx = (cur_layer[i][j + 1] - cur_layer[i][j - 1] - v2) * second_deriv_scale
             dyy = (cur_layer[i + 1][j] - cur_layer[i - 1][j] - v2) * second_deriv_scale
@@ -146,6 +210,7 @@ class SIFT:
                                 np.array([dxs, dys, dss])]).astype(dtype=float)
 
             X = np.linalg.pinv(Hessian).dot(dD)
+
             xi = -X[2]
             xr = -X[1]
             xc = -X[0]
@@ -153,15 +218,17 @@ class SIFT:
             if np.abs(xi) < 0.5 and np.abs(xr) < 0.5 and np.abs(xc) < 0.5:
                 break
 
-            if np.abs(xi) > INT_MAX or np.abs(xr) > INT_MAX or np.abs(xc) > INT_MAX:
+            if np.abs(xi) > INT_MAX/3 or np.abs(xr) > INT_MAX/3 or np.abs(xc) > INT_MAX/3:
                 return None
 
-            i += np.round(xc)
-            j += np.round(xr)
+            j += np.round(xc)
+            i += np.round(xr)
             layer += np.round(xi)
+
             i = int(i)
             j = int(j)
             layer = int(layer)
+
             if layer < 1 or layer > self.n_octave_layers or i < SIFT_IMG_BORDER or i >= h - SIFT_IMG_BORDER or j < SIFT_IMG_BORDER or j >= w - SIFT_IMG_BORDER:
                 return None
 
@@ -195,12 +262,15 @@ class SIFT:
             if det <= 0 or tr * tr * self.edge_threshold >= (self.edge_threshold + 1) * (self.edge_threshold + 1) * det:
                 return None
 
-        x = (i + xc) * 2 ** octave
-        y = (j + xr) * 2 ** octave
-        o = octave + (layer << 8) + (np.round((xi + 0.5) * 255) << 16)
-        size = self.sigma * np.power(2, (layer + xi) / self.n_octave_layers) * (1 << octave) * 2
-        response = np.abs(contr)
-        return [x, y, o, size, response]
+        key_point = KeyPoint()
+        key_point.x = (j+xc) * 2 ** octave
+        key_point.y = (i+xr) * 2 ** octave
+        key_point.octave = octave
+        key_point.layer = layer
+        key_point.size = self.sigma * np.power(2, (layer + xi) / self.n_octave_layers) * (1 << octave) * 2
+        key_point.response = np.abs(contr)
+        key_point.scale = 1 / (1 << octave) if octave >= 0 else (1 << -octave)
+        return key_point
 
     def calc_orientation_hist(self, octave, layer, x, y, radius, sigma, n):
 
@@ -208,12 +278,11 @@ class SIFT:
         cols, rows = img.shape
         length = (radius * 2 + 1) * (radius * 2 + 1)
         expf_scale = -1.0 / (2 * sigma * sigma)
-        X = [0] * length
-        Y = [0] * length
-        W = [0] * length
+        X = []
+        Y = []
+        W = []
         temp_hist = [0] * (length + 2)
 
-        k = 0
         for i in range(-radius, radius + 1):
             if y <= 0 or y >= rows - 1:
                 continue
@@ -222,15 +291,15 @@ class SIFT:
                     continue
                 dx = img[y][x + 1] - img[y][x - 1]
                 dy = img[y - 1][x] - img[y + 1][x]
+                X.append(dx)
+                Y.append(dy)
+                W.append((i * i + j * j) * expf_scale)
+        length = len(X)
+        X = np.array(X).reshape(1, length)
+        Y = np.array(Y).reshape(length, 1)
+        W = np.array(W)
 
-                X[k] = dx
-                Y[k] = dy
-                W[k] = (i * i + j * j) * expf_scale
-                k += 1
-        length = k
-        X = np.array(X[:length]).reshape(1, length)
-        Y = np.array(Y[:length]).reshape(length, 1)
-        W = np.array(W[:length])
+        W = np.exp(W)
         Ori = np.arctan2(Y, X)
         Mag = np.sqrt(Y ** 2 + X ** 2)
 
@@ -249,84 +318,82 @@ class SIFT:
         hist = np.zeros(length)
         for i in range(n):
             hist[i] = (temp_hist[i - 2] + temp_hist[i + 2]) * (1 / 16) + (temp_hist[i - 1] + temp_hist[i + 1]) * (
-                        4 / 16) + temp_hist[i] * (6 / 16)
+                    4 / 16) + temp_hist[i] * (6 / 16)
 
         hist = np.array(hist)
         maxval = np.max(hist)
         return maxval, hist
 
     def calc_descriptors(self):
-        d, n = 4, 8
-        octave, layer , scale = 0, 0, 0
+        d, n = SIFT_DESCR_WIDTH, SIFT_DESCR_HIST_BINS
         for key_point in self.key_points:
-            size = key_point[3]*scale
-            key_point[0] *= scale
-            key_point[1] *= scale
+            octave, layer, scale = key_point.octave, key_point.layer, key_point.s
+            size = key_point.size * scale
+            key_point.x *= scale
+            key_point.y *= scale
             img = self.dog_pyramid[octave][layer]
-            angle = key_point[-1]
-            if np.abs(angle-360) < 0.0001:
+            angle = key_point.angle
+            if np.abs(angle - 360) < FLT_EPSILON:
                 angle = 0
-            self.calc_sift_descriptor(img, key_point, angle, size*0.5, d, n)
+            self.calc_sift_descriptor(img, key_point, angle, size * 0.5, d, n)
 
     def calc_sift_descriptor(self, img, key_point, ori, scl, d, n):
         h, w = img.shape
-        x, y = int(key_point[0]), int(key_point[1])
-        cos_t = np.cos(ori*(np.pi/180))
-        sin_t = np.sin(ori*(np.pi/180))
+        x, y = int(np.round(key_point.x)), int(np.round(key_point.y))
+        cos_t = np.cos(ori * (np.pi / 180))
+        sin_t = np.sin(ori * (np.pi / 180))
 
         bins_per_rad = n / 360
-        exp_scale = -1.0 / (d*d*0.5)
-        hist_width = 3*scl
+        exp_scale = -1.0 / (d * d * 0.5)
+        hist_width = SIFT_DESCR_SCL_FCTR * scl
 
-        radius = int(np.round(hist_width*np.sqrt(2)*(d+1)*0.5))
-        radius = min(radius, int(np.sqrt(h*h+w*w)))
+        radius = int(np.round(hist_width * np.sqrt(2) * (d + 1) * 0.5))
+        radius = min(radius, int(np.sqrt(h * h + w * w)))
 
         cos_t /= hist_width
         sin_t /= hist_width
 
-        length = (radius*2+1)*(radius*2+1)
-        hist_length = (d+2)*(d+2)*(n+2)
-        hist = [0]*hist_length
+        hist_length = (d + 2) * (d + 2) * (n + 2)
+        hist = [0] * hist_length
 
         X, Y, RBin, CBin, W = [], [], [], [], []
-        k = 0
-        for i in range(-radius, radius+1):
-            for j in range(-radius, radius+1):
+
+        for i in range(-radius, radius + 1):
+            for j in range(-radius, radius + 1):
                 c_rot = j * cos_t - i * sin_t
                 r_rot = j * sin_t + i * cos_t
 
-                rbin = r_rot + d/2 - 0.5
-                cbin = c_rot + d/2 - 0.5
+                rbin = r_rot + d / 2 - 0.5
+                cbin = c_rot + d / 2 - 0.5
 
-                r = y+i
-                c = x+j
+                r = y + i
+                c = x + j
 
-                if -1 < rbin < d and -1 < cbin < d and 0 < r < h-1 and 0 < c < w-1:
-
-                    dx = img[r][c+1]-img[r][c-1]
-                    dy = img[r-1][c]-img[r+1][c]
+                if -1 < rbin < d and -1 < cbin < d and 0 < r < h - 1 and 0 < c < w - 1:
+                    dx = img[r][c + 1] - img[r][c - 1]
+                    dy = img[r - 1][c] - img[r + 1][c]
 
                     X.append(dx)
                     Y.append(dy)
                     RBin.append(rbin)
                     CBin.append(cbin)
-                    W.append((c_rot**2+r_rot**2)*exp_scale)
-                    k += 1
+                    W.append((c_rot ** 2 + r_rot ** 2) * exp_scale)
 
-        length = k
+        length = len(X)
         X = np.array(X).reshape(length, 1)
         Y = np.array(Y).reshape(1, length)
+        W = np.exp(W)
         Ori = np.arctan2(Y, X)
-        Mag = Ori = np.arctan2(Y, X)
+        Mag = np.sqrt(Y ** 2 + X ** 2)
 
         for i in range(length):
             rbin, cbin = RBin[i], CBin[i]
-            obin = (Ori[k] - ori)*bins_per_rad
-            mag = Mag[k]*W[k]
+            obin = (Ori[i] - ori) * bins_per_rad
+            mag = Mag[i] * W[i]
 
-            r0 = np.round(rbin)
-            c0 = np.round(cbin)
-            o0 = np.round(obin)
+            r0 = int(np.round(rbin))
+            c0 = int(np.round(cbin))
+            o0 = int(np.round(obin))
 
             rbin -= r0
             cbin -= c0
@@ -363,27 +430,27 @@ class SIFT:
             hist[idx + (d + 3) * (n + 2)] += v_rco110
             hist[idx + (d + 3) * (n + 2) + 1] += v_rco111
 
+        dst = np.zeros(d*d*n)
         for i in range(d):
             for j in range(d):
-                idx = ((i+1)*(d+2)+(j+1))*(n+2)
-                hist[idx] += hist[idx+n]
-                hist[idx+1] += hist[idx+n+1]
+                idx = ((i + 1) * (d + 2) + (j + 1)) * (n + 2)
+                hist[idx] += hist[idx + n]
+                hist[idx + 1] += hist[idx + n + 1]
                 for k in range(n):
-                    dst[(i*d+j)*n+k] = hist[idx+k]
+                    dst[(i * d + j) * n + k] = hist[idx + k]
 
         nrm2 = 0
-        length = d*d*n
+        length = d * d * n
         for i in range(length):
-            nrm2 += dst[k]*dst[k]
-        thr = np.sqrt(nrm2)*SIFT_DESCR_MAG_THR
-
+            nrm2 += dst[i] * dst[i]
+        thr = np.sqrt(nrm2) * SIFT_DESCR_MAG_THR
+        nrm2 = 0
         for i in range(len(length)):
             val = min(dst[i], thr)
             dst[i] = val
-            nrm2 += val*val
+            nrm2 += val * val
 
-        nrm2 = SIFT_INT_DESCR_FCTR/max(np.sqrt(nrm2), FLT_EPSILON)
+        nrm2 = SIFT_INT_DESCR_FCTR / max(np.sqrt(nrm2), FLT_EPSILON)
 
         for i in range(length):
-            dst[i] = dst[i]*nrm2
-
+            dst[i] = dst[i] * nrm2
