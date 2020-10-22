@@ -169,15 +169,16 @@ class SIFT:
                             key_point = self.adjust_adjust_local_extrema(octave, layer, i, j)
                             if key_point is None:
                                 continue
-                            scl_octv = key_point.size * 0.5 / (1 << octave)
-                            omax, hist = self.calc_orientation_hist(octave, layer, i, j, 3 * scl_octv, 1.5 * scl_octv, n)
+                            # print(key_point.x, key_point.y)
+                            scl_octv = key_point.size / (1 << octave)
+                            omax, hist = self.calc_orientation_hist(octave, layer, i, j, SIFT_ORI_RADIUS * scl_octv, SIFT_ORI_SIG_FCTR * scl_octv, n)
+
                             mag_thr = omax * 0.8
-                            for i in range(n):
-                                print(i)
-                                l = i - 1 if i > 0 else n - 1
-                                r = i + 1 if i < n - 1 else 0
-                                if hist[l] < hist[i] < hist[r] and hist[i] > mag_thr:
-                                    bin = i + 0.5 * (hist[l] - hist[r]) / (hist[l] - 2 * hist[j] + hist[r])
+                            for k in range(n):
+                                l = k - 1 if k > 0 else n - 1
+                                r = k + 1 if k < n - 1 else 0
+                                if hist[l] < hist[k] < hist[r] and hist[k] > mag_thr:
+                                    bin = k + 0.5 * (hist[l] - hist[r]) / (hist[l] - 2 * hist[k] + hist[r])
                                     bin = n + bin if bin < 0 else (bin - n if bin >= n else bin)
                                     key_point.angle = 360 - ((360 / n) * bin)
                                     if np.abs(key_point.angle - 360) < FLT_EPSILON:
@@ -279,7 +280,7 @@ class SIFT:
         key_point.y = (i + xr) * 2 ** octave
         key_point.octave = octave
         key_point.layer = layer
-        key_point.size = self.sigma * np.power(2, (layer + xi) / self.n_octave_layers) * (1 << octave) * 2
+        key_point.size = self.sigma * np.power(2, (layer + xi) / self.n_octave_layers) * (1 << octave)
         key_point.response = np.abs(contr)
         key_point.scale = 1 / (1 << octave) if octave >= 0 else (1 << -octave)
         return key_point
@@ -294,7 +295,7 @@ class SIFT:
         Y = []
         W = []
         temp_hist = [0] * (length + 2)
-
+        # print(length)
         for i in range(-int(radius), int(radius) + 1):
             if (y+i) <= 0 or (y+i) >= rows - 1:
                 continue
@@ -310,10 +311,10 @@ class SIFT:
         X = np.array(X)
         Y = np.array(Y)
         W = np.array(W)
-
+        # print(length)
         W = np.exp(W)
         Mag = np.sqrt(Y ** 2 + X ** 2)
-        Ori = np.arctan2(Y, X)
+        Ori = np.arctan2(Y, X)*180/np.pi
 
         for i in range(length):
             bin = int(np.round((n / 360) * Ori[i]))
@@ -323,10 +324,11 @@ class SIFT:
                 bin += n
             temp_hist[bin] += W[i] * Mag[i]
 
-        temp_hist[-1] = temp_hist[n - 1]
-        temp_hist[-2] = temp_hist[n - 2]
-        temp_hist[n] = temp_hist[0]
-        temp_hist[n + 1] = temp_hist[1]
+        temp = [temp_hist[n - 1], temp_hist[n - 2], temp_hist[0], temp_hist[1]]
+        temp_hist.insert(0, temp[0])
+        temp_hist.insert(0, temp[1])
+        temp_hist.insert(len(temp_hist), temp[2])
+        temp_hist.insert(len(temp_hist), temp[3])  # padding
         hist = np.zeros(n)
         for i in range(n):
             hist[i] = (temp_hist[i - 2] + temp_hist[i + 2]) * (1 / 16) + (temp_hist[i - 1] + temp_hist[i + 1]) * (
@@ -339,7 +341,7 @@ class SIFT:
     def calc_descriptors(self):
         d, n = SIFT_DESCR_WIDTH, SIFT_DESCR_HIST_BINS
         for key_point in self.key_points:
-            octave, layer, scale = key_point.octave, key_point.layer, key_point.s
+            octave, layer, scale = key_point.octave, key_point.layer, key_point.scale
             size = key_point.size * scale
             key_point.x *= scale
             key_point.y *= scale
@@ -395,17 +397,18 @@ class SIFT:
         X = np.array(X).reshape(length, 1)
         Y = np.array(Y).reshape(1, length)
         W = np.exp(W)
-        Ori = np.arctan2(Y, X)
+        Ori = np.arctan2(Y, X)*180/np.pi
         Mag = np.sqrt(Y ** 2 + X ** 2)
 
         for i in range(length):
             rbin, cbin = RBin[i], CBin[i]
             obin = (Ori[i] - ori) * bins_per_rad
+            print(obin)
             mag = Mag[i] * W[i]
 
-            r0 = int(np.round(rbin))
-            c0 = int(np.round(cbin))
-            o0 = int(np.round(obin))
+            r0 = int(rbin)
+            c0 = int(cbin)
+            o0 = int(obin)
 
             rbin -= r0
             cbin -= c0

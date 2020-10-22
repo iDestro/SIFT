@@ -19,5 +19,8 @@ sift.calc_descriptors()
 #     for i, layer in enumerate(layers):
 #         print(len(layers))
 #         cv2.imshow(str(octave)+":"+str(i), layer)
-
+print('key')
+print(len(sift.key_points))
+print('des')
+print(len(sift.descriptors))
 cv2.waitKey(0)
