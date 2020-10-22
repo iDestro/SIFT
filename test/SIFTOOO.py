@@ -128,7 +128,7 @@ def adjustLocalExtrema(DoG,o,s,x,y,contrastThreshold,edgeThreshold,sigma,n,SIFT_
         dxs = (next[x, y + 1] - next[x, y - 1] - prev[x, y + 1] + prev[x, y - 1]) * cross_deriv_scale
         dys = (next[x + 1, y] - next[x - 1, y] - prev[x + 1, y] + prev[x - 1, y]) * cross_deriv_scale
 
-        H=[ [dxx, dxy, dxs],
+        H = [[dxx, dxy, dxs],
             [dxy, dyy, dys],
             [dxs, dys, dss]]
 
@@ -333,7 +333,7 @@ def calcSIFTDescriptor(img,ptf,ori,scl,d,n,SIFT_DESCR_SCL_FCTR = 3.0,SIFT_DESCR_
             r = pt[1] + i
             c = pt[0] + j
 
-            if rbin > -1 and rbin < d and cbin > -1 and cbin < d and r > 0 and r < rows - 1 and c > 0 and c < cols - 1:
+            if -1 < rbin < d and -1 < cbin < d and 0 < r < rows - 1 and 0 < c < cols - 1:
                 dx = (img[r, c+1] - img[r, c-1])
                 dy = (img[r-1, c] - img[r+1, c])
                 X.append(dx)
@@ -341,7 +341,7 @@ def calcSIFTDescriptor(img,ptf,ori,scl,d,n,SIFT_DESCR_SCL_FCTR = 3.0,SIFT_DESCR_
                 RBin.append(rbin)
                 CBin.append(cbin)
                 W.append((c_rot * c_rot + r_rot * r_rot) * exp_scale)
-                k+=1
+                k += 1
 
     length = k
     Y = np.array(Y)
@@ -427,7 +427,7 @@ def calcSIFTDescriptor(img,ptf,ori,scl,d,n,SIFT_DESCR_SCL_FCTR = 3.0,SIFT_DESCR_
         nrm2 += val * val
     nrm2 = SIFT_INT_DESCR_FCTR / max(np.sqrt(nrm2), FLT_EPSILON)
     for k in range(length):
-        dst[k] = min(max(dst[k] * nrm2,0),255)
+        dst[k] = min(max(dst[k] * nrm2, 0), 255)
 
     return dst
 

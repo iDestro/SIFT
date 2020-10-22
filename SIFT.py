@@ -67,7 +67,7 @@ class SIFT:
     def create_initial_image(self, img):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         h, w = img.shape
-        self.img = img
+        self.img = img.astype(dtype=np.float)
         self.n_octaves = int(np.log(min(h, w)))-3
         self.gaussian_pyramid = {i: [] for i in range(self.n_octaves)}
         self.dog_pyramid = {i: [] for i in range(self.n_octaves)}
@@ -97,8 +97,11 @@ class SIFT:
             for i in range(0, self.n_octave_layers + 2):
                 self.dog_pyramid[octave].append(layer[i + 1] - layer[i])
 
+    # ok 1
     def find_scale_space_extrema(self):
-        threshold = int(np.round(0.5 * self.contrast_threshold / self.n_octave_layers * 255))
+        cnt = 0
+        # threshold = int(np.round(0.5 * self.contrast_threshold / self.n_octave_layers * 255))
+        threshold = 0.5 * self.contrast_threshold / (self.n_octave_layers * 255 * SIFT_FIXPT_SCALE)
         n = SIFT_ORI_HIST_BINS
         for octave, images in self.dog_pyramid.items():
             for layer in range(1, len(images) - 1):
@@ -165,26 +168,28 @@ class SIFT:
                                  )
                                 )
                         ):
-
+                            cnt += 1
                             key_point = self.adjust_adjust_local_extrema(octave, layer, i, j)
                             if key_point is None:
                                 continue
                             # print(key_point.x, key_point.y)
-                            scl_octv = key_point.size / (1 << octave)
+                            scl_octv = key_point.size * 0.5 / (1 << octave)
                             omax, hist = self.calc_orientation_hist(octave, layer, i, j, SIFT_ORI_RADIUS * scl_octv, SIFT_ORI_SIG_FCTR * scl_octv, n)
 
-                            mag_thr = omax * 0.8
+                            mag_thr = omax * SIFT_ORI_PEAK_RATIO
                             for k in range(n):
                                 l = k - 1 if k > 0 else n - 1
                                 r = k + 1 if k < n - 1 else 0
                                 if hist[l] < hist[k] < hist[r] and hist[k] > mag_thr:
                                     bin = k + 0.5 * (hist[l] - hist[r]) / (hist[l] - 2 * hist[k] + hist[r])
                                     bin = n + bin if bin < 0 else (bin - n if bin >= n else bin)
-                                    key_point.angle = 360 - ((360 / n) * bin)
-                                    if np.abs(key_point.angle - 360) < FLT_EPSILON:
-                                        key_point.angle = 0
+                                    key_point.angle = (360 / n) * bin
+                                    # if np.abs(key_point.angle - 360) < FLT_EPSILON:
+                                    #     key_point.angle = 0
                                     self.key_points.append(key_point)
+        print(cnt)
 
+    # ok 1
     def adjust_adjust_local_extrema(self, octave, layer, i, j):
 
         img_scale = 1.0 / (255 * SIFT_FIXPT_SCALE)
@@ -222,7 +227,7 @@ class SIFT:
                                 np.array([dxy, dyy, dys]),
                                 np.array([dxs, dys, dss])]).astype(dtype=float)
 
-            X = np.linalg.pinv(Hessian).dot(dD)
+            X = np.matmul(np.linalg.pinv(Hessian), dD)
 
             xi = -X[2]
             xr = -X[1]
@@ -234,13 +239,9 @@ class SIFT:
             if np.abs(xi) > INT_MAX / 3 or np.abs(xr) > INT_MAX / 3 or np.abs(xc) > INT_MAX / 3:
                 return None
 
-            j += np.round(xc)
-            i += np.round(xr)
-            layer += np.round(xi)
-
-            i = int(i)
-            j = int(j)
-            layer = int(layer)
+            j += int(np.round(xc))
+            i += int(np.round(xr))
+            layer += int(np.round(xi))
 
             if layer < 1 or layer > self.n_octave_layers or i < SIFT_IMG_BORDER or i >= h - SIFT_IMG_BORDER or j < SIFT_IMG_BORDER or j >= w - SIFT_IMG_BORDER:
                 return None
@@ -276,15 +277,16 @@ class SIFT:
                 return None
 
         key_point = KeyPoint()
-        key_point.x = (j + xc) * 2 ** octave
-        key_point.y = (i + xr) * 2 ** octave
+        key_point.x = (j + xc) * (1 << octave)
+        key_point.y = (i + xr) * (1 << octave)
         key_point.octave = octave
-        key_point.layer = layer
-        key_point.size = self.sigma * np.power(2, (layer + xi) / self.n_octave_layers) * (1 << octave)
+        key_point.layer = layer + int(np.round(xi+0.5))
+        key_point.size = self.sigma * np.power(2, (layer + xi) / self.n_octave_layers) * (1 << octave)*2
         key_point.response = np.abs(contr)
         key_point.scale = 1 / (1 << octave) if octave >= 0 else (1 << -octave)
         return key_point
 
+    # ok 1
     def calc_orientation_hist(self, octave, layer, x, y, radius, sigma, n):
 
         img = self.dog_pyramid[octave][layer]
@@ -294,8 +296,9 @@ class SIFT:
         X = []
         Y = []
         W = []
-        temp_hist = [0] * (length + 2)
+        # temp_hist = [0] * (length + 2)
         # print(length)
+        temp_hist = [0]*n
         for i in range(-int(radius), int(radius) + 1):
             if (y+i) <= 0 or (y+i) >= rows - 1:
                 continue
@@ -338,19 +341,22 @@ class SIFT:
         maxval = np.max(hist)
         return maxval, hist
 
+    # ok 1
     def calc_descriptors(self):
         d, n = SIFT_DESCR_WIDTH, SIFT_DESCR_HIST_BINS
         for key_point in self.key_points:
-            octave, layer, scale = key_point.octave, key_point.layer, key_point.scale
+            octave, layer = key_point.octave, key_point.layer
+            scale = 1.0 / (1 << octave)
             size = key_point.size * scale
             key_point.x *= scale
             key_point.y *= scale
             img = self.dog_pyramid[octave][layer]
             angle = key_point.angle
-            if np.abs(angle - 360) < FLT_EPSILON:
-                angle = 0
+            # if np.abs(angle - 360) < FLT_EPSILON:
+            #     angle = 0
             self.calc_sift_descriptor(img, key_point, angle, size * 0.5, d, n)
 
+    # ok 1
     def calc_sift_descriptor(self, img, key_point, ori, scl, d, n):
         h, w = img.shape
         x, y = int(np.round(key_point.x)), int(np.round(key_point.y))
@@ -362,7 +368,7 @@ class SIFT:
         hist_width = SIFT_DESCR_SCL_FCTR * scl
 
         radius = int(np.round(hist_width * np.sqrt(2) * (d + 1) * 0.5))
-        radius = min(radius, int(np.sqrt(h * h + w * w)))
+        # radius = min(radius, int(np.sqrt(h * h + w * w)))
 
         cos_t /= hist_width
         sin_t /= hist_width
@@ -377,8 +383,8 @@ class SIFT:
                 c_rot = j * cos_t - i * sin_t
                 r_rot = j * sin_t + i * cos_t
 
-                rbin = r_rot + d / 2 - 0.5
-                cbin = c_rot + d / 2 - 0.5
+                rbin = r_rot + d // 2 - 0.5
+                cbin = c_rot + d // 2 - 0.5
 
                 r = y + i
                 c = x + j
@@ -394,8 +400,8 @@ class SIFT:
                     W.append((c_rot ** 2 + r_rot ** 2) * exp_scale)
 
         length = len(X)
-        X = np.array(X).reshape(length, 1)
-        Y = np.array(Y).reshape(1, length)
+        X = np.array(X)
+        Y = np.array(Y)
         W = np.exp(W)
         Ori = np.arctan2(Y, X)*180/np.pi
         Mag = np.sqrt(Y ** 2 + X ** 2)
@@ -403,7 +409,6 @@ class SIFT:
         for i in range(length):
             rbin, cbin = RBin[i], CBin[i]
             obin = (Ori[i] - ori) * bins_per_rad
-            print(obin)
             mag = Mag[i] * W[i]
 
             r0 = int(rbin)
@@ -421,16 +426,22 @@ class SIFT:
 
             v_r1 = mag * rbin
             v_r0 = mag - v_r1
+
             v_rc11 = v_r1 * cbin
             v_rc10 = v_r1 - v_rc11
+
             v_rc01 = v_r0 * cbin
             v_rc00 = v_r0 - v_rc01
+
             v_rco111 = v_rc11 * obin
             v_rco110 = v_rc11 - v_rco111
+
             v_rco101 = v_rc10 * obin
             v_rco100 = v_rc10 - v_rco101
+
             v_rco011 = v_rc01 * obin
             v_rco010 = v_rc01 - v_rco011
+
             v_rco001 = v_rc00 * obin
             v_rco000 = v_rc00 - v_rco001
 
@@ -445,14 +456,14 @@ class SIFT:
             hist[idx + (d + 3) * (n + 2)] += v_rco110
             hist[idx + (d + 3) * (n + 2) + 1] += v_rco111
 
-        dst = np.zeros(d * d * n)
+        dst = []
         for i in range(d):
             for j in range(d):
                 idx = ((i + 1) * (d + 2) + (j + 1)) * (n + 2)
                 hist[idx] += hist[idx + n]
                 hist[idx + 1] += hist[idx + n + 1]
                 for k in range(n):
-                    dst[(i * d + j) * n + k] = hist[idx + k]
+                    dst.append(hist[idx + k])
 
         nrm2 = 0
         length = d * d * n
@@ -460,7 +471,7 @@ class SIFT:
             nrm2 += dst[i] * dst[i]
         thr = np.sqrt(nrm2) * SIFT_DESCR_MAG_THR
         nrm2 = 0
-        for i in range(len(length)):
+        for i in range(length):
             val = min(dst[i], thr)
             dst[i] = val
             nrm2 += val * val
@@ -468,6 +479,6 @@ class SIFT:
         nrm2 = SIFT_INT_DESCR_FCTR / max(np.sqrt(nrm2), FLT_EPSILON)
 
         for i in range(length):
-            dst[i] = dst[i] * nrm2
-
-        self.descriptors.append(dst)
+            # dst[i] = dst[i] * nrm2
+            dst[i] = min(max(dst[i] * nrm2, 0), 255)
+        self.descriptors.append(np.array(dst))
